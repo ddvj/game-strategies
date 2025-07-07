@@ -30,8 +30,18 @@ let non_win =
     ]
 
 let print_game (game : Game.t) =
-  ignore game;
-  print_endline ""
+  let length = Game_kind.board_length (Game.get_game_kind game) in
+  let board = Game.get_board game in
+  let all_pos =
+    List.cartesian_product
+      (List.init length ~f:(fun x -> x))
+      (List.init length ~f:(fun x -> x))
+  in
+  let option_map = Map.empty in
+  List.iter all_pos ~f:(fun pos ->
+      Map.add option_map ~key:(Position.of_tuple pos)
+        ~data:(Map.find board (Position.of_tuple pos)));
+  ()
 
 let%expect_test "print_win_for_x" =
   print_game win_for_x;
@@ -59,8 +69,8 @@ let%expect_test "print_non_win" =
 
 (* Exercise 1 *)
 let available_moves (game : Game.t) : Position.t list =
-  ignore game;
-  failwith "Implement me!"
+  let board = Game.get_board game in
+  Map.fold board ~init:[] ~f:(fun ~key ~data pos_list -> pos_list)
 
 (* Exercise 2 *)
 let evaluate (game : Game.t) : Evaluation.t =

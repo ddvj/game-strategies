@@ -5,3 +5,5 @@ type t = { game_kind : Game_kind.t; board : Piece.t Position.Map.t }
 
 val empty : Game_kind.t -> t
 val set_piece : t -> Position.t -> Piece.t -> t
+val get_board : t -> Piece.t Position.Map.t
+val get_game_kind : t -> Game_kind.t
