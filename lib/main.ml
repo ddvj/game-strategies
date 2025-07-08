@@ -29,19 +29,41 @@ let non_win =
       ({ row = 2; column = 0 }, O);
     ]
 
+let print_row row board =
+  let pre_processed_string =
+    List.fold row ~init:"" ~f:(fun final_string pos ->
+        final_string
+        ^
+        match Map.find board (Position.of_tuple pos) with
+        | Some piece -> Piece.to_string piece ^ " | "
+        | None -> "  | ")
+  in
+  print_endline
+    (String.sub pre_processed_string ~pos:0
+       ~len:(String.length pre_processed_string - 3))
+
+let print_rowline row length board =
+  print_endline (String.make length '-');
+  print_row row board
+
 let print_game (game : Game.t) =
   let length = Game_kind.board_length (Game.get_game_kind game) in
+  let num_dashes = (4 * length) - 3 in
   let board = Game.get_board game in
   let all_pos =
     List.cartesian_product
       (List.init length ~f:(fun x -> x))
       (List.init length ~f:(fun x -> x))
   in
-  let option_map = Map.empty in
-  List.iter all_pos ~f:(fun pos ->
-      Map.add option_map ~key:(Position.of_tuple pos)
-        ~data:(Map.find board (Position.of_tuple pos)));
-  ()
+  let rows =
+    List.groupi all_pos ~break:(fun i _ _ ->
+        match i % length with 0 -> true | _ -> false)
+  in
+  match rows with
+  | hd :: tl ->
+      print_row hd board;
+      List.iter tl ~f:(fun row -> print_rowline row num_dashes board)
+  | [] -> failwith "no rows"
 
 let%expect_test "print_win_for_x" =
   print_game win_for_x;
@@ -69,13 +91,71 @@ let%expect_test "print_non_win" =
 
 (* Exercise 1 *)
 let available_moves (game : Game.t) : Position.t list =
+  let length = Game_kind.board_length (Game.get_game_kind game) in
   let board = Game.get_board game in
-  Map.fold board ~init:[] ~f:(fun ~key ~data pos_list -> pos_list)
+  let all_pos =
+    List.cartesian_product
+      (List.init length ~f:(fun x -> x))
+      (List.init length ~f:(fun x -> x))
+  in
+  List.fold all_pos ~init:[] ~f:(fun acc pos ->
+      match Map.find board (Position.of_tuple pos) with
+      | Some _ -> acc
+      | None -> Position.of_tuple pos :: acc)
+;;
 
 (* Exercise 2 *)
+List.find_map
+
 let evaluate (game : Game.t) : Evaluation.t =
-  ignore game;
-  failwith "Implement me!"
+  let kind = Game.get_game_kind game in
+  let win_length = Game_kind.win_length kind in
+  let length = Game_kind.board_length kind in
+  let board = Game.get_board game in
+  let all_pos =
+    List.map
+      (List.cartesian_product
+         (List.init length ~f:(fun x -> x))
+         (List.init length ~f:(fun x -> x)))
+      ~f:Position.of_tuple
+  in
+  let all_in_bounds =
+    Map.is_empty
+      (Map.filter_keys board ~f:(fun key ->
+           not (Position.in_bounds key ~game_kind:kind)))
+  in
+  if not all_in_bounds then Evaluation.Illegal_move
+  else
+    let rec win_from_pos ~target pos depth direction =
+      match
+        ( depth >= win_length,
+          Position.in_bounds pos ~game_kind:kind,
+          Map.find board pos )
+      with
+      | _, false, _ -> false
+      | _, _, None -> false
+      | true, _, Some piece -> Piece.equal piece target
+      | false, _, Some piece ->
+          Piece.equal piece target
+          && win_from_pos ~target (direction pos) (depth + 1) direction
+    in
+
+    let winning_position =
+      List.find all_pos ~f:(fun pos ->
+          match Map.find board pos with
+          | None -> false
+          | Some piece ->
+              let halfdirections = Position.half_offsets in
+              List.exists halfdirections ~f:(fun direction ->
+                  win_from_pos ~target:piece pos 0 direction))
+    in
+
+    match winning_position with
+    | Some pos -> Evaluation.Game_over { winner = Map.find board pos }
+    | None ->
+        if Map.length board = win_length * win_length then
+          Evaluation.Game_over { winner = None }
+        else Evaluation.Game_continues
 
 (* Exercise 3 *)
 let winning_moves ~(me : Piece.t) (game : Game.t) : Position.t list =

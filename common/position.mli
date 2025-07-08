@@ -27,4 +27,5 @@ val all_offsets : (t -> t) list
 (** [all_offsets] is a list of functions to compute all 8 neighbors of a cell
     (i.e. left, up-left, up, up-right, right, right-down, down, down-left). *)
 
+val half_offsets : (t -> t) list
 val of_tuple : int * int -> t
