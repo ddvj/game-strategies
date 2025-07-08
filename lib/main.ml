@@ -29,6 +29,14 @@ let non_win =
       ({ row = 2; column = 0 }, O);
     ]
 
+let all_positions game =
+  let length = Game_kind.board_length (Game.get_game_kind game) in
+  List.map
+    (List.cartesian_product
+       (List.init length ~f:(fun x -> x))
+       (List.init length ~f:(fun x -> x)))
+    ~f:Position.of_tuple
+
 let print_row row board =
   let pre_processed_string =
     List.fold row ~init:"" ~f:(fun final_string pos ->
@@ -91,34 +99,18 @@ let%expect_test "print_non_win" =
 
 (* Exercise 1 *)
 let available_moves (game : Game.t) : Position.t list =
-  let length = Game_kind.board_length (Game.get_game_kind game) in
   let board = Game.get_board game in
-  let all_pos =
-    List.cartesian_product
-      (List.init length ~f:(fun x -> x))
-      (List.init length ~f:(fun x -> x))
-  in
+  let all_pos = all_positions game in
   List.fold all_pos ~init:[] ~f:(fun acc pos ->
-      match Map.find board (Position.of_tuple pos) with
-      | Some _ -> acc
-      | None -> Position.of_tuple pos :: acc)
-;;
+      match Map.find board pos with Some _ -> acc | None -> pos :: acc)
 
 (* Exercise 2 *)
-List.find_map
 
 let evaluate (game : Game.t) : Evaluation.t =
   let kind = Game.get_game_kind game in
   let win_length = Game_kind.win_length kind in
-  let length = Game_kind.board_length kind in
   let board = Game.get_board game in
-  let all_pos =
-    List.map
-      (List.cartesian_product
-         (List.init length ~f:(fun x -> x))
-         (List.init length ~f:(fun x -> x)))
-      ~f:Position.of_tuple
-  in
+  let all_pos = all_positions game in
   let all_in_bounds =
     Map.is_empty
       (Map.filter_keys board ~f:(fun key ->
