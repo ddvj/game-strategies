@@ -151,15 +151,20 @@ let evaluate (game : Game.t) : Evaluation.t =
 
 (* Exercise 3 *)
 let winning_moves ~(me : Piece.t) (game : Game.t) : Position.t list =
-  ignore me;
-  ignore game;
-  failwith "Implement me!"
+  let all_pos = all_positions game in
+  List.fold all_pos ~init:[] ~f:(fun acc pos ->
+      match evaluate (Game.set_piece game pos me) with
+      | Evaluation.Game_over { winner = Some piece } ->
+          if Piece.equal piece me then pos :: acc else acc
+      | _ -> acc)
 
 (* Exercise 4 *)
 let losing_moves ~(me : Piece.t) (game : Game.t) : Position.t list =
-  ignore me;
-  ignore game;
-  failwith "Implement me!"
+  let all_pos = all_positions game in
+  List.fold all_pos ~init:[] ~f:(fun acc pos ->
+      match winning_moves ~me:(Piece.flip me) (Game.set_piece game pos me) with
+      | _ :: _ -> pos :: acc
+      | _ -> acc)
 
 let exercise_one =
   Command.async ~summary:"Exercise 1: Where can I move?"
@@ -216,6 +221,58 @@ let command =
 
 (* Exercise 5 *)
 let make_move ~(game : Game.t) ~(you_play : Piece.t) : Position.t =
-  ignore game;
-  ignore you_play;
-  failwith "Implement me!"
+  let all_pos = available_moves game in
+  let wins = winning_moves ~me:you_play game in
+  match wins with hd :: _ -> hd | _ -> List.hd_exn all_pos
+
+(* Exercise 6 *)
+let make_move_one_ahead ~(game : Game.t) ~(you_play : Piece.t) : Position.t =
+  let all_pos = available_moves game in
+  let wins = winning_moves ~me:you_play game in
+  let losses = losing_moves ~me:you_play game in
+  match wins with
+  | hd :: _ -> hd
+  | _ -> (
+      match
+        List.filter all_pos ~f:(fun pos ->
+            not (List.exists losses ~f:(Position.equal pos)))
+      with
+      | hd :: _ -> hd
+      | _ -> List.hd_exn all_pos)
+
+(* Exercise 7 *)
+
+let rec minimax ~(node : Game.t) ~(depth : int) ~(initial_player : Piece.t)
+    ~(max : bool) ~(alpha : int) ~(beta : int) : int =
+  if depth = 0 then 0
+  else
+    match evaluate node with
+    | Illegal_move -> failwith "unexpected illegal move"
+    | Game_over { winner = Some piece } ->
+        if Piece.equal initial_player piece then Int.max_value
+        else Int.min_value
+    | Game_over { winner = None } -> 0
+    | Game_continues -> (
+        match max with
+        | true ->
+            List.fold
+              (List.map (available_moves node) ~f:(fun pos ->
+                   Game.set_piece node pos (Piece.flip initial_player)))
+              ~init:Int.min_value
+              ~f:(fun acc child ->
+                Int.max acc
+                  (minimax ~node:child ~depth:(depth - 1) ~initial_player
+                     ~max:false))
+        | false ->
+            List.fold
+              (List.map (available_moves node) ~f:(fun pos ->
+                   Game.set_piece node pos initial_player))
+              ~init:Int.max_value
+              ~f:(fun acc child ->
+                Int.min acc
+                  (minimax ~node:child ~depth:(depth - 1) ~initial_player
+                     ~max:true)))
+
+let score ~(node : Game.t) ~(turn : Piece.t) =
+  if Game_kind.equal Game_kind.Tic_tac_toe (Game.get_game_kind node) then 0
+  else 0
