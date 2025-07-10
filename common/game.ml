@@ -17,4 +17,3 @@ let set_piece t position piece =
 
 let get_board t = t.board
 let get_game_kind t = t.game_kind
-let get_last_move t = t.last_move

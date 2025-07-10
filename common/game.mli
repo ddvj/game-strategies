@@ -12,5 +12,3 @@ val empty : Game_kind.t -> t
 val set_piece : t -> Position.t -> Piece.t -> t
 val get_board : t -> Piece.t Position.Map.t
 val get_game_kind : t -> Game_kind.t
-val get_last_move : t -> (Piece.t * Position.t) option
-val get_prev_state : t -> t option

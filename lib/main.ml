@@ -220,12 +220,8 @@ let command =
     ]
 
 (* Exercise 5 *)
-let make_move ~(game : Game.t) ~(you_play : Piece.t) : Position.t =
-  let all_pos = available_moves game in
-  let wins = winning_moves ~me:you_play game in
-  match wins with hd :: _ -> hd | _ -> List.hd_exn all_pos
 
-(* Exercise 6 *)
+(*(* Exercise 6 *)
 let make_move_one_ahead ~(game : Game.t) ~(you_play : Piece.t) : Position.t =
   let all_pos = available_moves game in
   let wins = winning_moves ~me:you_play game in
@@ -238,12 +234,20 @@ let make_move_one_ahead ~(game : Game.t) ~(you_play : Piece.t) : Position.t =
             not (List.exists losses ~f:(Position.equal pos)))
       with
       | hd :: _ -> hd
-      | _ -> List.hd_exn all_pos)
+      | _ -> List.hd_exn all_pos)*)
 
 (* Exercise 7 *)
 
-let rec minimax ~(node : Game.t) ~(depth : int) ~(initial_player : Piece.t)
-    ~(max : bool) ~(alpha : int) ~(beta : int) : int =
+let available_adjacents ~node =
+  available_moves node
+  |> List.filter ~f:(fun pos ->
+         List.exists Position.all_offsets ~f:(fun dir ->
+             match Map.find (Game.get_board node) (dir pos) with
+             | Some _ -> true
+             | None -> false))
+
+let rec minimax ~(node : Game.t) ~(depth : int) ~(initial_player : Piece.t) :
+    int =
   if depth = 0 then 0
   else
     match evaluate node with
@@ -253,26 +257,42 @@ let rec minimax ~(node : Game.t) ~(depth : int) ~(initial_player : Piece.t)
         else Int.min_value
     | Game_over { winner = None } -> 0
     | Game_continues -> (
-        match max with
-        | true ->
+        let search_next = available_adjacents ~node in
+        match initial_player with
+        | Piece.X ->
             List.fold
-              (List.map (available_moves node) ~f:(fun pos ->
-                   Game.set_piece node pos (Piece.flip initial_player)))
+              (List.map search_next ~f:(fun pos ->
+                   Game.set_piece node pos initial_player))
               ~init:Int.min_value
               ~f:(fun acc child ->
                 Int.max acc
-                  (minimax ~node:child ~depth:(depth - 1) ~initial_player
-                     ~max:false))
-        | false ->
+                  (minimax ~node:child ~depth:(depth - 1)
+                     ~initial_player:(Piece.flip initial_player)))
+        | Piece.O ->
             List.fold
-              (List.map (available_moves node) ~f:(fun pos ->
-                   Game.set_piece node pos initial_player))
+              (List.map search_next ~f:(fun pos ->
+                   Game.set_piece node pos (Piece.flip initial_player)))
               ~init:Int.max_value
               ~f:(fun acc child ->
                 Int.min acc
-                  (minimax ~node:child ~depth:(depth - 1) ~initial_player
-                     ~max:true)))
+                  (minimax ~node:child ~depth:(depth - 1)
+                     ~initial_player:(Piece.flip initial_player))))
 
-let score ~(node : Game.t) ~(turn : Piece.t) =
+(*let score ~(node : Game.t) ~(turn : Piece.t) =
   if Game_kind.equal Game_kind.Tic_tac_toe (Game.get_game_kind node) then 0
-  else 0
+  else 0*)
+
+let make_move ~(game : Game.t) ~(you_play : Piece.t) : Position.t =
+  let all_pos = available_moves game in
+  let move, _ =
+    List.fold all_pos
+      ~init:(List.hd_exn all_pos, Int.min_value)
+      ~f:(fun (hipos, hiscore) pos ->
+        let score =
+          minimax
+            ~node:(Game.set_piece game pos you_play)
+            ~depth:9 ~initial_player:you_play
+        in
+        if score > hiscore then (pos, score) else (hipos, hiscore))
+  in
+  move
