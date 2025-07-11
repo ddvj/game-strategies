@@ -30,3 +30,6 @@ let half_offsets =
   [ right; right >> down; down; down >> left ]
 
 let of_tuple (a, b) = { row = a; column = b }
+
+let from_center t =
+  ((t.row - 7) * (t.row - 7)) + ((t.column - 7) * (t.column - 7))

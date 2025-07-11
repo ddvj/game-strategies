@@ -124,9 +124,9 @@ let evaluate (game : Game.t) : Evaluation.t =
           Position.in_bounds pos ~game_kind:kind,
           Map.find board pos )
       with
+      | true, _, _ -> true
       | _, false, _ -> false
       | _, _, None -> false
-      | true, _, Some piece -> Piece.equal piece target
       | false, _, Some piece ->
           Piece.equal piece target
           && win_from_pos ~target (direction pos) (depth + 1) direction
@@ -246,53 +246,168 @@ let available_adjacents ~node =
              | Some _ -> true
              | None -> false))
 
-let rec minimax ~(node : Game.t) ~(depth : int) ~(initial_player : Piece.t) :
-    int =
-  if depth = 0 then 0
+let uncapped_triples node =
+  let board = Game.get_board node in
+  let all_pos = all_positions node in
+
+  let check_triple pos dir1 dir2 =
+    match
+      (Map.find board pos, Map.find board (dir1 pos), Map.find board (dir2 pos))
+    with
+    | Some piece0, Some piece1, Some piece2 ->
+        Piece.equal piece0 piece1 && Piece.equal piece0 piece2
+    | _ -> false
+  in
+
+  let check_all pos =
+    if check_triple pos Position.down Position.up then
+      (true, Position.down, Position.up)
+    else if check_triple pos Position.right Position.left then
+      (true, Position.right, Position.left)
+    else if
+      check_triple pos
+        (Fn.compose Position.up Position.right)
+        (Fn.compose Position.down Position.left)
+    then
+      ( true,
+        Fn.compose Position.up Position.right,
+        Fn.compose Position.down Position.left )
+    else if
+      check_triple pos
+        (Fn.compose Position.up Position.left)
+        (Fn.compose Position.down Position.right)
+    then
+      ( true,
+        Fn.compose Position.up Position.left,
+        Fn.compose Position.down Position.right )
+    else (false, Position.up, Position.up)
+  in
+
+  let capped pos dir piece =
+    match Map.find board ((Fn.compose dir dir) pos) with
+    | None ->
+        not
+          (Position.in_bounds
+             ((Fn.compose dir dir) pos)
+             ~game_kind:Game_kind.Omok)
+    | Some piece2 -> not (Piece.equal piece piece2)
+  in
+
+  let triples =
+    List.fold all_pos ~init:[] ~f:(fun total pos ->
+        let has_triple, dir1, dir2 = check_all pos in
+        if Map.mem board pos && has_triple then
+          let piece = Option.value_exn (Map.find board pos) in
+          if (not (capped pos dir1 piece)) && not (capped pos dir2 piece) then
+            (pos, true, dir1, dir2) :: total
+          else if not (capped pos dir1 piece) then
+            (pos, false, dir1, dir1) :: total
+          else if not (capped pos dir2 piece) then
+            (pos, false, dir2, dir2) :: total
+          else total
+        else total)
+  in
+  triples
+
+let score ~(node : Game.t) =
+  if Game_kind.equal Game_kind.Tic_tac_toe (Game.get_game_kind node) then 0
+  else
+    let board = Game.get_board node in
+    let all_pos = all_positions node in
+    let centering =
+      List.fold all_pos ~init:0 ~f:(fun total pos ->
+          let closeness = 98 - Position.from_center pos in
+          match Map.find board pos with
+          | Some piece ->
+              if Piece.equal Piece.X piece then total + closeness
+              else total - closeness
+          | None -> total)
+    in
+    let triple_score =
+      List.fold (uncapped_triples node) ~init:0
+        ~f:(fun total (pos, double, _, _) ->
+          match (double, Option.value_exn (Map.find board pos)) with
+          | true, Piece.X -> total + 3
+          | true, Piece.O -> total - 3
+          | false, Piece.X -> total + 1
+          | false, Piece.O -> total - 1)
+    in
+    let final = centering + (triple_score * 1000) in
+    (*print_endline (Int.to_string final);*)
+    final
+
+let rec minimax ~(node : Game.t) ~(depth : int) ~(player : Piece.t) : int =
+  if depth = 0 then score ~node
   else
     match evaluate node with
     | Illegal_move -> failwith "unexpected illegal move"
     | Game_over { winner = Some piece } ->
-        if Piece.equal initial_player piece then Int.max_value
-        else Int.min_value
+        if Piece.equal Piece.X piece then Int.max_value else Int.min_value
     | Game_over { winner = None } -> 0
-    | Game_continues -> (
-        let search_next = available_adjacents ~node in
-        match initial_player with
-        | Piece.X ->
-            List.fold
-              (List.map search_next ~f:(fun pos ->
-                   Game.set_piece node pos initial_player))
-              ~init:Int.min_value
-              ~f:(fun acc child ->
-                Int.max acc
-                  (minimax ~node:child ~depth:(depth - 1)
-                     ~initial_player:(Piece.flip initial_player)))
-        | Piece.O ->
-            List.fold
-              (List.map search_next ~f:(fun pos ->
-                   Game.set_piece node pos (Piece.flip initial_player)))
-              ~init:Int.max_value
-              ~f:(fun acc child ->
-                Int.min acc
-                  (minimax ~node:child ~depth:(depth - 1)
-                     ~initial_player:(Piece.flip initial_player))))
-
-(*let score ~(node : Game.t) ~(turn : Piece.t) =
-  if Game_kind.equal Game_kind.Tic_tac_toe (Game.get_game_kind node) then 0
-  else 0*)
+    | Game_continues ->
+        let center = Position.{ row = 7; column = 7 } in
+        let search_next =
+          match Map.find (Game.get_board node) center with
+          | None -> center :: available_adjacents ~node
+          | _ -> available_adjacents ~node
+        in
+        let opposing_triples =
+          List.filter (uncapped_triples node) ~f:(fun (pos, double, _, _) ->
+              double
+              && Piece.equal (Piece.flip player)
+                   (Option.value_exn (Map.find (Game.get_board node) pos)))
+        in
+        let search_next =
+          match opposing_triples with
+          | [] -> search_next
+          | triples ->
+            List.fold triples ~init:[]
+                ~f:(fun total (pos, double, dir1, dir2) ->
+                  match double with
+                  | true ->
+                      (Fn.compose dir1 dir1) pos
+                      :: (Fn.compose dir2 dir2) pos
+                      :: total
+                  | false -> total)
+        in
+        List.fold
+          (List.map search_next ~f:(fun pos -> Game.set_piece node pos player))
+          ~init:
+            (match player with Piece.X -> Int.min_value | _ -> Int.max_value)
+          ~f:(fun acc child ->
+            (match player with Piece.X -> Int.max | _ -> Int.min)
+              acc
+              (minimax ~node:child ~depth:(depth - 1)
+                 ~player:(Piece.flip player)))
 
 let make_move ~(game : Game.t) ~(you_play : Piece.t) : Position.t =
-  let all_pos = available_moves game in
+  let all_pos = available_adjacents ~node:game in
+  let all_pos =
+    match all_pos with
+    | [] -> [ Position.{ row = 7; column = 7 } ]
+    | _ -> all_pos
+  in
   let move, _ =
-    List.fold all_pos
-      ~init:(List.hd_exn all_pos, Int.min_value)
-      ~f:(fun (hipos, hiscore) pos ->
-        let score =
-          minimax
-            ~node:(Game.set_piece game pos you_play)
-            ~depth:9 ~initial_player:you_play
-        in
-        if score > hiscore then (pos, score) else (hipos, hiscore))
+    match you_play with
+    | Piece.X ->
+        List.fold all_pos
+          ~init:(List.hd_exn all_pos, Int.min_value)
+          ~f:(fun (hipos, hiscore) pos ->
+            let score =
+              minimax
+                ~node:(Game.set_piece game pos you_play)
+                ~depth:2 ~player:(Piece.flip you_play)
+            in
+            if score > hiscore then (pos, score) else (hipos, hiscore))
+    | Piece.O ->
+        List.fold all_pos
+          ~init:(List.hd_exn all_pos, Int.max_value)
+          ~f:(fun (hipos, hiscore) pos ->
+            let score =
+              minimax
+                ~node:(Game.set_piece game pos you_play)
+                ~depth:2 ~player:(Piece.flip you_play)
+            in
+            if score < hiscore then (pos, score) else (hipos, hiscore))
   in
   move

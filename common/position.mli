@@ -29,3 +29,4 @@ val all_offsets : (t -> t) list
 
 val half_offsets : (t -> t) list
 val of_tuple : int * int -> t
+val from_center : t -> int
